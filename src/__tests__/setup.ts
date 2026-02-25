@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom'
+import 'fake-indexeddb/auto'
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -16,12 +17,14 @@ const localStorageMock = (() => {
 Object.defineProperty(window, 'localStorage', { value: localStorageMock })
 
 // Mock crypto.randomUUID
-Object.defineProperty(window, 'crypto', {
-  value: {
-    randomUUID: () => Math.random().toString(36).substring(2) + Date.now().toString(36),
-    getRandomValues: (arr: Uint8Array) => {
-      for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256)
-      return arr
+if (!window.crypto?.randomUUID) {
+  Object.defineProperty(window, 'crypto', {
+    value: {
+      randomUUID: () => Math.random().toString(36).substring(2) + Date.now().toString(36),
+      getRandomValues: (arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256)
+        return arr
+      },
     },
-  },
-})
+  })
+}

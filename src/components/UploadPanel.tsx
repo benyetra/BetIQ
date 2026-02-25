@@ -24,12 +24,12 @@ export default function UploadPanel({ onDataLoaded }: UploadPanelProps) {
 
     try {
       const text = await file.text()
-      const existingBets = store.getBets()
-      const existingIds = new Set(existingBets.map(b => b.bet_id))
+      const existing = await store.getBets()
+      const existingIds = new Set(existing.map(b => b.bet_id))
       const parseResult = await parseCSV(text, existingIds)
 
       if (parseResult.bets.length > 0) {
-        const mergeResult = store.addBets(parseResult.bets)
+        const mergeResult = await store.addBets(parseResult.bets)
         parseResult.duplicates += mergeResult.duplicates
         store.addUpload({
           id: crypto.randomUUID(),
@@ -38,9 +38,10 @@ export default function UploadPanel({ onDataLoaded }: UploadPanelProps) {
           row_count: parseResult.parsedRows,
           status: 'complete',
         })
+        // Pass the in-memory merged array directly — don't round-trip through storage
+        onDataLoaded(mergeResult.merged)
       }
       setResult(parseResult)
-      onDataLoaded(store.getBets())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse CSV')
     } finally {
@@ -64,17 +65,15 @@ export default function UploadPanel({ onDataLoaded }: UploadPanelProps) {
     if (file) processFile(file)
   }, [processFile])
 
-  const handleLoadSampleData = useCallback(() => {
+  const handleLoadSampleData = useCallback(async () => {
     setIsProcessing(true)
     setError(null)
     setResult(null)
-    setTimeout(() => {
-      const sampleBets = generateSampleData()
-      store.setBets(sampleBets)
-      setResult({ bets: sampleBets, errors: [], totalRows: sampleBets.length, parsedRows: sampleBets.length, duplicates: 0 })
-      onDataLoaded(sampleBets)
-      setIsProcessing(false)
-    }, 500)
+    const sampleBets = generateSampleData()
+    await store.setBets(sampleBets)
+    setResult({ bets: sampleBets, errors: [], totalRows: sampleBets.length, parsedRows: sampleBets.length, duplicates: 0 })
+    onDataLoaded(sampleBets)
+    setIsProcessing(false)
   }, [onDataLoaded])
 
   return (

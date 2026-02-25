@@ -22,9 +22,10 @@ export default function Home() {
   const [isLoaded, setIsLoaded] = useState(false)
 
   useEffect(() => {
-    const savedBets = store.getBets()
-    if (savedBets.length > 0) setBets(savedBets)
-    setIsLoaded(true)
+    store.getBets().then(savedBets => {
+      if (savedBets.length > 0) setBets(savedBets)
+      setIsLoaded(true)
+    })
   }, [])
 
   const handleDataLoaded = useCallback((newBets: Bet[]) => {
@@ -42,8 +43,8 @@ export default function Home() {
   const parlayBreakdown = useMemo(() => computeParlayBreakdown(filteredBets), [filteredBets])
   const insights = useMemo(() => generateInsights(filteredBets), [filteredBets])
 
-  const clearData = () => {
-    store.clearAll()
+  const clearData = async () => {
+    await store.clearAll()
     setBets([])
     setFilters(DEFAULT_FILTERS)
   }
