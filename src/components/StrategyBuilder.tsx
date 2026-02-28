@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -8,7 +8,7 @@ import { computeSummary, computeSportBreakdown, computeBetTypeBreakdown, compute
 import { formatCurrency, formatPercent } from '@/lib/utils'
 import { store } from '@/lib/store'
 import { v4 as uuidv4 } from 'uuid'
-import { Wand2, PlayCircle, Save, ArrowRight, TrendingUp, TrendingDown, Sliders } from 'lucide-react'
+import { Wand2, PlayCircle, Save, ArrowRight, TrendingUp, TrendingDown, Sliders, Loader2 } from 'lucide-react'
 
 interface StrategyBuilderProps {
   bets: Bet[]
@@ -78,7 +78,16 @@ function WhatIfCard({ scenario, bets }: { scenario: typeof PRESET_SCENARIOS[0]; 
 }
 
 export default function StrategyBuilder({ bets }: StrategyBuilderProps) {
-  const [strategies, setStrategies] = useState<Strategy[]>(() => store.getStrategies())
+  const [strategies, setStrategies] = useState<Strategy[]>([])
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  // Load strategies asynchronously
+  useEffect(() => {
+    store.getStrategies().then(saved => {
+      setStrategies(saved)
+      setIsInitialized(true)
+    })
+  }, [])
 
   const autoStrategy = useMemo(() => {
     if (bets.length < 20) return null
@@ -124,9 +133,9 @@ export default function StrategyBuilder({ bets }: StrategyBuilderProps) {
     } as Strategy
   }, [bets])
 
-  const saveStrategy = (strategy: Strategy) => {
+  const saveStrategy = async (strategy: Strategy) => {
     strategy.active = true
-    store.addStrategy(strategy)
+    await store.addStrategy(strategy)
     setStrategies([...strategies, strategy])
   }
 

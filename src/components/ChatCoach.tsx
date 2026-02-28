@@ -122,10 +122,19 @@ function generateLocalResponse(question: string, bets: Bet[]): string {
 }
 
 export default function ChatCoach({ bets }: ChatCoachProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => store.getChatHistory())
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Load chat history asynchronously
+  useEffect(() => {
+    store.getChatHistory().then(history => {
+      setMessages(history)
+      setIsInitialized(true)
+    })
+  }, [])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -144,7 +153,7 @@ export default function ChatCoach({ bets }: ChatCoachProps) {
     }
 
     setMessages(prev => [...prev, userMsg])
-    store.addChatMessage(userMsg)
+    await store.addChatMessage(userMsg)
     setInput('')
     setIsLoading(true)
 
@@ -178,13 +187,23 @@ export default function ChatCoach({ bets }: ChatCoachProps) {
     }
 
     setMessages(prev => [...prev, assistantMsg])
-    store.addChatMessage(assistantMsg)
+    await store.addChatMessage(assistantMsg)
     setIsLoading(false)
   }, [input, isLoading, bets, messages])
 
-  const clearChat = () => {
+  const clearChat = async () => {
     setMessages([])
-    store.clearChatHistory()
+    await store.clearChatHistory()
+  }
+
+  if (!isInitialized) {
+    return (
+      <Card className="flex flex-col h-[600px]">
+        <CardContent className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+        </CardContent>
+      </Card>
+    )
   }
 
   return (

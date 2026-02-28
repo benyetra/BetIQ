@@ -31,7 +31,7 @@ export default function UploadPanel({ onDataLoaded }: UploadPanelProps) {
       if (parseResult.bets.length > 0) {
         const mergeResult = await store.addBets(parseResult.bets)
         parseResult.duplicates += mergeResult.duplicates
-        store.addUpload({
+        await store.addUpload({
           id: crypto.randomUUID(),
           filename: file.name,
           uploaded_at: new Date().toISOString(),

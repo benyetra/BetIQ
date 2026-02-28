@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom'
 import 'fake-indexeddb/auto'
+import { vi } from 'vitest'
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -28,3 +29,20 @@ if (!window.crypto?.randomUUID) {
     },
   })
 }
+
+// Mock Supabase client for tests
+vi.mock('@/lib/supabase/client', () => ({
+  createClient: () => ({
+    from: () => ({
+      select: () => ({ eq: () => ({ order: () => ({ data: [], error: null }) }), data: [], error: null }),
+      insert: () => ({ select: () => ({ data: [], error: null }), data: [], error: null }),
+      upsert: () => ({ select: () => ({ data: [], error: null }), data: [], error: null }),
+      delete: () => ({ eq: () => ({ data: [], error: null }), data: [], error: null }),
+    }),
+    auth: {
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      signOut: () => Promise.resolve({ error: null }),
+    },
+  }),
+}))
