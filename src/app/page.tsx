@@ -16,8 +16,7 @@ import InsightsPanel from '@/components/InsightsPanel'
 import ChatCoach from '@/components/ChatCoach'
 import StrategyBuilder from '@/components/StrategyBuilder'
 import AlertsPanel from '@/components/AlertsPanel'
-import PricingPanel from '@/components/PricingPanel'
-import { BarChart3, Upload, Brain, MessageCircle, Target, TrendingUp, Trash2, Phone, Bell, CreditCard, CloudUpload, Loader2 } from 'lucide-react'
+import { BarChart3, Upload, Brain, MessageCircle, Target, TrendingUp, Trash2, Phone, Bell, CloudUpload, Loader2 } from 'lucide-react'
 
 export default function Home() {
   const { user, isLoading: authLoading } = useAuth()
@@ -265,10 +264,6 @@ export default function Home() {
                 <Bell className="h-4 w-4 mr-1.5" />
                 Alerts
               </TabsTrigger>
-              <TabsTrigger value="pricing">
-                <CreditCard className="h-4 w-4 mr-1.5" />
-                Plans
-              </TabsTrigger>
               <TabsTrigger value="upload">
                 <Upload className="h-4 w-4 mr-1.5" />
                 Upload
@@ -311,10 +306,6 @@ export default function Home() {
 
             <TabsContent value="alerts">
               <AlertsPanel bets={filteredBets} />
-            </TabsContent>
-
-            <TabsContent value="pricing">
-              <PricingPanel />
             </TabsContent>
 
             <TabsContent value="upload">
