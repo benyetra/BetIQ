@@ -105,12 +105,13 @@ export function getGameTimeDisplay(
   completed: boolean | undefined,
   gameStatus: string | null | undefined
 ): string | null {
-  if (completed || gameStatus === 'completed') return 'Final'
+  const status = gameStatus?.toLowerCase().replace(/\s+/g, '_') || ''
+  if (completed || status === 'completed' || status === 'final') return 'Final'
 
   const start = new Date(commenceTime)
   const now = new Date()
 
-  if (gameStatus === 'in_progress') {
+  if (status === 'in_progress') {
     const elapsedMs = now.getTime() - start.getTime()
     if (elapsedMs < 0) return 'Live'
     const elapsedMin = Math.floor(elapsedMs / 60000)

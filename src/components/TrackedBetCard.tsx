@@ -142,10 +142,13 @@ export default function TrackedBetCard({
           const away = scoreData?.away ?? leg.live_score_away
           const hasScore = home !== null && home !== undefined && away !== null && away !== undefined
           const delta = hasScore ? computeBetDelta(leg, home, away) : null
+          const effectiveStatus = scoreData?.status || leg.game_status || null
           const gameTime = getGameTimeDisplay(
             leg.commence_time,
-            scoreData?.status === 'completed',
-            leg.game_status || scoreData?.status || null
+            effectiveStatus?.toLowerCase() === 'final' || effectiveStatus === 'completed',
+            hasScore && !effectiveStatus?.toLowerCase()?.includes('final') && !effectiveStatus?.includes('completed')
+              ? 'in_progress'
+              : effectiveStatus
           )
           return (
             <div className="flex items-center justify-between bg-zinc-800/50 rounded-lg p-3 mb-2">

@@ -86,10 +86,13 @@ export default function ParlayLegList({ legs, variant = 'compact', scores }: Par
                   const away = scoreData?.away ?? leg.live_score_away
                   const hasScore = home !== null && home !== undefined && away !== null && away !== undefined
                   const delta = hasScore ? computeBetDelta(leg, home, away) : null
+                  const effectiveStatus = scoreData?.status || leg.game_status || null
                   const gameTime = getGameTimeDisplay(
                     leg.commence_time,
-                    scoreData?.status === 'completed',
-                    leg.game_status || scoreData?.status || null
+                    effectiveStatus?.toLowerCase() === 'final' || effectiveStatus === 'completed',
+                    hasScore && !effectiveStatus?.toLowerCase()?.includes('final') && !effectiveStatus?.includes('completed')
+                      ? 'in_progress'
+                      : effectiveStatus
                   )
 
                   return (
