@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { acquireSlot, getCached, setCache } from '@/lib/odds-api-queue'
 
 const ODDS_API_BASE = 'https://api.the-odds-api.com/v4'
-
-// Server-side rate limiter
-let lastOddsApiCall = 0
-const MIN_INTERVAL_MS = 1500
-
-// Cache: sport -> { data, timestamp }
-const gamesCache = new Map<string, { data: unknown; quota: unknown; timestamp: number }>()
-const CACHE_TTL_MS = 60000 // 60s cache for game listings
+const CACHE_TTL_MS = 120000 // 2 min cache for game listings
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,19 +18,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'sport parameter required' }, { status: 400 })
     }
 
+    const cacheKey = `games:${sport}`
+
     // Check cache first
-    const cached = gamesCache.get(sport)
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-      return NextResponse.json({ games: cached.data, quota: cached.quota, cached: true })
+    const cached = getCached(cacheKey, CACHE_TTL_MS)
+    if (cached) {
+      return NextResponse.json({
+        games: cached.data,
+        quota: { requestsRemaining: cached.headers['x-requests-remaining'], requestsUsed: cached.headers['x-requests-used'] },
+        cached: true,
+      })
     }
 
-    // Enforce minimum interval
-    const now = Date.now()
-    const elapsed = now - lastOddsApiCall
-    if (elapsed < MIN_INTERVAL_MS) {
-      await new Promise(resolve => setTimeout(resolve, MIN_INTERVAL_MS - elapsed))
-    }
-    lastOddsApiCall = Date.now()
+    // Wait for rate limiter slot
+    await acquireSlot()
 
     const url = new URL(`${ODDS_API_BASE}/sports/${sport}/odds`)
     url.searchParams.set('apiKey', apiKey)
@@ -49,26 +44,29 @@ export async function GET(req: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text()
       console.error('Odds API error:', errorText)
-      if (response.status === 429 || errorText.includes('EXCEEDED_FREQ_LIMIT')) {
-        if (cached) {
-          return NextResponse.json({ games: cached.data, quota: cached.quota, cached: true, delayed: true })
-        }
+
+      const stale = getCached(cacheKey, 300000)
+      if (stale) {
+        return NextResponse.json({ games: stale.data, quota: { requestsRemaining: stale.headers['x-requests-remaining'], requestsUsed: stale.headers['x-requests-used'] }, cached: true, delayed: true })
+      }
+      if (response.status === 429) {
         return NextResponse.json({ error: 'Rate limit exceeded. Please wait before retrying.' }, { status: 429 })
       }
       return NextResponse.json({ error: 'Failed to fetch games' }, { status: 502 })
     }
 
     const data = await response.json()
-
-    const quota = {
-      requestsRemaining: response.headers.get('x-requests-remaining'),
-      requestsUsed: response.headers.get('x-requests-used'),
+    const headers = {
+      'x-requests-remaining': response.headers.get('x-requests-remaining'),
+      'x-requests-used': response.headers.get('x-requests-used'),
     }
 
-    // Cache
-    gamesCache.set(sport, { data, quota, timestamp: Date.now() })
+    setCache(cacheKey, data, headers)
 
-    return NextResponse.json({ games: data, quota })
+    return NextResponse.json({
+      games: data,
+      quota: { requestsRemaining: headers['x-requests-remaining'], requestsUsed: headers['x-requests-used'] },
+    })
   } catch (error) {
     console.error('Live games API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

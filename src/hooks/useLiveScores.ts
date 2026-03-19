@@ -1,7 +1,6 @@
 "use client"
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { TrackedBet, TrackedBetLeg, LegStatus } from '@/types/betting'
-import { SPORT_DISPLAY } from '@/lib/odds-api'
+import { TrackedBet, LegStatus } from '@/types/betting'
 
 interface ScoreData {
   id: string
@@ -32,14 +31,6 @@ interface ScoreChange {
   status: string
 }
 
-interface LegStatusChange {
-  legId: string
-  betId: string
-  oldStatus: LegStatus
-  newStatus: LegStatus
-  selection: string
-}
-
 export function useLiveScores(trackedBets: TrackedBet[]) {
   const [state, setState] = useState<LiveScoreState>({
     scores: {},
@@ -51,30 +42,27 @@ export function useLiveScores(trackedBets: TrackedBet[]) {
   })
 
   const [scoreChanges, setScoreChanges] = useState<ScoreChange[]>([])
-  const [legStatusChanges, setLegStatusChanges] = useState<LegStatusChange[]>([])
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const prevScoresRef = useRef<Record<string, ScoreData>>({})
+  const isFetchingRef = useRef(false)
 
-  // Collect unique sport keys and game IDs from active bets
-  const activeBets = trackedBets.filter(b => b.tracking_status === 'live')
+  // Use refs for values accessed inside fetchScores to avoid re-creating the callback
+  const trackedBetsRef = useRef(trackedBets)
+  trackedBetsRef.current = trackedBets
 
-  const gameInfoMap = useRef<Map<string, { sportKey: string; leg: TrackedBetLeg; betId: string }>>(new Map())
+  const isPausedRef = useRef(state.isPaused)
+  isPausedRef.current = state.isPaused
 
-  // Build map of game_id -> sport_key for all active bets
-  useEffect(() => {
-    const map = new Map<string, { sportKey: string; leg: TrackedBetLeg; betId: string }>()
-    for (const bet of activeBets) {
-      for (const leg of bet.legs) {
-        if (leg.game_id && leg.game_status !== 'completed') {
-          map.set(leg.game_id, { sportKey: leg.sport, leg, betId: bet.id })
-        }
-      }
-    }
-    gameInfoMap.current = map
-  }, [activeBets])
-
+  // Stable fetchScores that reads from refs — never changes identity
   const fetchScores = useCallback(async () => {
-    if (activeBets.length === 0 || state.isPaused) return
+    const bets = trackedBetsRef.current
+    const activeBets = bets.filter(b => b.tracking_status === 'live')
+
+    if (activeBets.length === 0 || isPausedRef.current) return
+
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
 
     // Group game IDs by sport
     const sportGameIds = new Map<string, string[]>()
@@ -90,49 +78,59 @@ export function useLiveScores(trackedBets: TrackedBet[]) {
       }
     }
 
-    if (sportGameIds.size === 0) return
+    if (sportGameIds.size === 0) {
+      isFetchingRef.current = false
+      return
+    }
 
     setState(prev => ({ ...prev, isPolling: true, error: null }))
 
     try {
       const allScores: Record<string, ScoreData> = {}
-      let latestQuota = state.quota
+      let latestQuota = { requestsRemaining: null as number | null, requestsUsed: null as number | null }
 
-      // Fetch scores for each sport (serialized with 1.5s gap to respect rate limits)
+      // Fetch one sport at a time — server handles rate limiting,
+      // but we still space requests 2s apart client-side as defense-in-depth
       const sportEntries = Array.from(sportGameIds.entries())
       for (let i = 0; i < sportEntries.length; i++) {
         const [sportKey, gameIds] = sportEntries[i]
 
-        // Wait 1.5s between requests to respect Odds API freq limit
         if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1500))
+          await new Promise(resolve => setTimeout(resolve, 2000))
         }
 
         const params = new URLSearchParams({
           sport: sportKey,
           game_ids: gameIds.join(','),
         })
-        const response = await fetch(`/api/live-scores?${params}`)
-        if (!response.ok) {
-          if (response.status === 429) {
-            setState(prev => ({ ...prev, error: 'Rate limit hit - data may be delayed', isPolling: false }))
-            return
+
+        try {
+          const response = await fetch(`/api/live-scores?${params}`)
+          if (!response.ok) {
+            if (response.status === 429) {
+              setState(prev => ({ ...prev, error: 'Rate limit hit - data may be delayed', isPolling: false }))
+              isFetchingRef.current = false
+              return
+            }
+            continue
           }
+          const data = await response.json()
+          for (const score of (data.scores || [])) {
+            allScores[score.id] = score
+          }
+          if (data.quota) {
+            latestQuota = {
+              requestsRemaining: data.quota.requestsRemaining ? parseInt(data.quota.requestsRemaining) : null,
+              requestsUsed: data.quota.requestsUsed ? parseInt(data.quota.requestsUsed) : null,
+            }
+          }
+        } catch {
+          // Individual sport fetch failed, continue with others
           continue
-        }
-        const data = await response.json()
-        for (const score of (data.scores || [])) {
-          allScores[score.id] = score
-        }
-        if (data.quota) {
-          latestQuota = {
-            requestsRemaining: data.quota.requestsRemaining ? parseInt(data.quota.requestsRemaining) : null,
-            requestsUsed: data.quota.requestsUsed ? parseInt(data.quota.requestsUsed) : null,
-          }
         }
       }
 
-      // Diff scores against previous state to detect changes
+      // Diff scores against previous state
       const changes: ScoreChange[] = []
       const prevScores = prevScoresRef.current
 
@@ -179,41 +177,39 @@ export function useLiveScores(trackedBets: TrackedBet[]) {
     } catch (err) {
       console.error('Failed to fetch live scores:', err)
       setState(prev => ({ ...prev, error: 'Failed to fetch scores', isPolling: false }))
+    } finally {
+      isFetchingRef.current = false
     }
-  }, [activeBets, state.isPaused, state.quota])
+  }, []) // Empty deps — reads from refs
 
-  // Set up polling interval
+  // Count active bets to decide whether to poll
+  const activeBetCount = trackedBets.filter(b => b.tracking_status === 'live').length
+
+  // Set up polling — only restarts when activeBetCount or isPaused changes
   useEffect(() => {
-    if (activeBets.length === 0 || state.isPaused) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-      return
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
     }
 
-    // Initial fetch
-    fetchScores()
+    if (activeBetCount === 0 || state.isPaused) return
 
-    // Determine polling interval based on quota
-    let pollInterval = 30000 // 30s default
-    if (state.quota.requestsRemaining !== null) {
-      if (state.quota.requestsRemaining < 200) {
-        pollInterval = 60000 // 60s when low on quota
-      } else if (state.quota.requestsRemaining < 1000) {
-        pollInterval = 45000 // 45s when getting lower
-      }
-    }
-
-    intervalRef.current = setInterval(fetchScores, pollInterval)
+    // Delay initial fetch by 1s to avoid hammering on mount
+    const initialTimer = setTimeout(() => {
+      fetchScores()
+      // Then poll every 30s
+      intervalRef.current = setInterval(fetchScores, 30000)
+    }, 1000)
 
     return () => {
+      clearTimeout(initialTimer)
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
     }
-  }, [activeBets.length, state.isPaused, fetchScores])
+  }, [activeBetCount, state.isPaused, fetchScores])
 
   const togglePause = useCallback(() => {
     setState(prev => ({ ...prev, isPaused: !prev.isPaused }))
@@ -221,13 +217,11 @@ export function useLiveScores(trackedBets: TrackedBet[]) {
 
   const clearChanges = useCallback(() => {
     setScoreChanges([])
-    setLegStatusChanges([])
   }, [])
 
   return {
     ...state,
     scoreChanges,
-    legStatusChanges,
     togglePause,
     clearChanges,
     refetch: fetchScores,

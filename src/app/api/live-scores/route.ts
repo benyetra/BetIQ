@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { acquireSlot, getCached, setCache } from '@/lib/odds-api-queue'
 
 const ODDS_API_BASE = 'https://api.the-odds-api.com/v4'
-
-// Server-side rate limiter: enforce minimum 1.5s between outbound Odds API calls
-let lastOddsApiCall = 0
-const MIN_INTERVAL_MS = 1500
-
-// Simple in-memory cache: sport -> { data, timestamp }
-const scoreCache = new Map<string, { data: unknown; quota: unknown; timestamp: number }>()
-const CACHE_TTL_MS = 25000 // 25s cache (polling is 30s)
+const CACHE_TTL_MS = 30000 // 30s — matches polling interval
 
 export async function GET(req: NextRequest) {
   try {
@@ -25,26 +19,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'sport parameter required' }, { status: 400 })
     }
 
+    const cacheKey = `scores:${sportParam}`
+
     // Check cache first
-    const cached = scoreCache.get(sportParam)
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    const cached = getCached(cacheKey, CACHE_TTL_MS)
+    if (cached) {
       let scores = cached.data as { id: string }[]
       if (gameIdsParam) {
         const gameIds = gameIdsParam.split(',')
         scores = scores.filter(game => gameIds.includes(game.id))
       }
-      return NextResponse.json({ scores, quota: cached.quota, cached: true })
+      return NextResponse.json({
+        scores,
+        quota: { requestsRemaining: cached.headers['x-requests-remaining'], requestsUsed: cached.headers['x-requests-used'] },
+        cached: true,
+      })
     }
 
-    // Enforce minimum interval between Odds API calls
-    const now = Date.now()
-    const elapsed = now - lastOddsApiCall
-    if (elapsed < MIN_INTERVAL_MS) {
-      await new Promise(resolve => setTimeout(resolve, MIN_INTERVAL_MS - elapsed))
-    }
-    lastOddsApiCall = Date.now()
+    // Wait for rate limiter slot
+    await acquireSlot()
 
-    // Fetch scores for the sport
     const url = new URL(`${ODDS_API_BASE}/sports/${sportParam}/scores`)
     url.searchParams.set('apiKey', apiKey)
     url.searchParams.set('daysFrom', '3')
@@ -54,39 +48,42 @@ export async function GET(req: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text()
       console.error('Odds API scores error:', errorText)
-      if (response.status === 429 || errorText.includes('EXCEEDED_FREQ_LIMIT')) {
-        // Return cached data if available, even if stale
-        if (cached) {
-          let scores = cached.data as { id: string }[]
-          if (gameIdsParam) {
-            const gameIds = gameIdsParam.split(',')
-            scores = scores.filter(game => gameIds.includes(game.id))
-          }
-          return NextResponse.json({ scores, quota: cached.quota, cached: true, delayed: true })
+
+      // On rate limit, return stale cache if available
+      const stale = getCached(cacheKey, 300000) // accept up to 5 min stale
+      if (stale) {
+        let scores = stale.data as { id: string }[]
+        if (gameIdsParam) {
+          const gameIds = gameIdsParam.split(',')
+          scores = scores.filter(game => gameIds.includes(game.id))
         }
+        return NextResponse.json({ scores, quota: { requestsRemaining: stale.headers['x-requests-remaining'], requestsUsed: stale.headers['x-requests-used'] }, cached: true, delayed: true })
+      }
+      if (response.status === 429) {
         return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
       }
       return NextResponse.json({ error: 'Failed to fetch scores' }, { status: 502 })
     }
 
     const allScores = await response.json()
-
-    const quota = {
-      requestsRemaining: response.headers.get('x-requests-remaining'),
-      requestsUsed: response.headers.get('x-requests-used'),
+    const headers = {
+      'x-requests-remaining': response.headers.get('x-requests-remaining'),
+      'x-requests-used': response.headers.get('x-requests-used'),
     }
 
-    // Cache the full response
-    scoreCache.set(sportParam, { data: allScores, quota, timestamp: Date.now() })
+    // Cache full result
+    setCache(cacheKey, allScores, headers)
 
-    // Filter to only requested game IDs if provided
     let scores = allScores
     if (gameIdsParam) {
       const gameIds = gameIdsParam.split(',')
       scores = allScores.filter((game: { id: string }) => gameIds.includes(game.id))
     }
 
-    return NextResponse.json({ scores, quota })
+    return NextResponse.json({
+      scores,
+      quota: { requestsRemaining: headers['x-requests-remaining'], requestsUsed: headers['x-requests-used'] },
+    })
   } catch (error) {
     console.error('Live scores API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
