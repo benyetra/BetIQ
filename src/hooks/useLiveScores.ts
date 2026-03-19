@@ -98,8 +98,16 @@ export function useLiveScores(trackedBets: TrackedBet[]) {
       const allScores: Record<string, ScoreData> = {}
       let latestQuota = state.quota
 
-      // Fetch scores for each sport (batched)
-      for (const [sportKey, gameIds] of sportGameIds) {
+      // Fetch scores for each sport (serialized with 1.5s gap to respect rate limits)
+      const sportEntries = Array.from(sportGameIds.entries())
+      for (let i = 0; i < sportEntries.length; i++) {
+        const [sportKey, gameIds] = sportEntries[i]
+
+        // Wait 1.5s between requests to respect Odds API freq limit
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+
         const params = new URLSearchParams({
           sport: sportKey,
           game_ids: gameIds.join(','),
