@@ -3,6 +3,7 @@ import React from 'react'
 import { TrackedBetLeg, LegStatus } from '@/types/betting'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { computeBetDelta, getGameTimeDisplay } from '@/lib/bet-delta'
 
 interface ParlayLegListProps {
   legs: TrackedBetLeg[]
@@ -80,18 +81,59 @@ export default function ParlayLegList({ legs, variant = 'compact', scores }: Par
               </div>
 
               <div className="flex flex-col items-end gap-1">
-                {(scoreData || (leg.live_score_home !== null && leg.live_score_away !== null)) && (
-                  <div className={cn(
-                    'font-mono font-bold tabular-nums',
-                    isPresentation ? 'text-2xl' : 'text-lg',
-                    isActive ? 'text-yellow-400' : 'text-white'
-                  )}>
-                    {scoreData ? `${scoreData.home} - ${scoreData.away}` : `${leg.live_score_home} - ${leg.live_score_away}`}
-                  </div>
-                )}
-                <span className={cn('text-xs', config.color)}>
-                  {leg.league}
-                </span>
+                {(() => {
+                  const home = scoreData?.home ?? leg.live_score_home
+                  const away = scoreData?.away ?? leg.live_score_away
+                  const hasScore = home !== null && home !== undefined && away !== null && away !== undefined
+                  const delta = hasScore ? computeBetDelta(leg, home, away) : null
+                  const gameTime = getGameTimeDisplay(
+                    leg.commence_time,
+                    scoreData?.status === 'completed',
+                    leg.game_status || scoreData?.status || null
+                  )
+
+                  return (
+                    <>
+                      {hasScore && (
+                        <div className={cn(
+                          'font-mono font-bold tabular-nums',
+                          isPresentation ? 'text-2xl' : 'text-lg',
+                          isActive ? 'text-yellow-400' : 'text-white'
+                        )}>
+                          {home} - {away}
+                        </div>
+                      )}
+                      {delta && (
+                        <div className={cn(
+                          'font-medium rounded-full px-2 py-0.5',
+                          isPresentation ? 'text-sm' : 'text-xs',
+                          delta.type === 'cushion' || delta.type === 'covering' || delta.type === 'leading'
+                            ? 'text-emerald-400 bg-emerald-900/30'
+                            : delta.type === 'behind' || delta.type === 'trailing'
+                            ? 'text-red-400 bg-red-900/30'
+                            : delta.type === 'need'
+                            ? 'text-amber-400 bg-amber-900/30'
+                            : 'text-zinc-400 bg-zinc-800'
+                        )}>
+                          {delta.label}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        {gameTime && (
+                          <span className={cn(
+                            'text-xs text-zinc-500',
+                            isActive && 'text-yellow-500/70'
+                          )}>
+                            {gameTime}
+                          </span>
+                        )}
+                        <span className={cn('text-xs', config.color)}>
+                          {leg.league}
+                        </span>
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
 

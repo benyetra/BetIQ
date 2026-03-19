@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { TrackedBet, TrackedBetLeg, LegStatus } from '@/types/betting'
 import { americanToDecimal, calculateParlayOdds, calculatePayout } from '@/lib/odds-api'
+import { computeBetDelta, getGameTimeDisplay } from '@/lib/bet-delta'
 
 // Helper to create test legs
 function createLeg(overrides: Partial<TrackedBetLeg> = {}): TrackedBetLeg {
@@ -214,6 +215,111 @@ describe('Tracked bet types and helpers', () => {
       })
 
       expect(changed).toHaveLength(0)
+    })
+  })
+
+  describe('Bet delta / cushion calculation', () => {
+    it('computes under total cushion', () => {
+      const leg = createLeg({ market_type: 'total', selection: 'Under 70.5' })
+      const delta = computeBetDelta(leg, 30, 24)
+      expect(delta).not.toBeNull()
+      expect(delta!.type).toBe('cushion')
+      expect(delta!.value).toBeCloseTo(16.5)
+      expect(delta!.label).toBe('16.5 pts cushion')
+    })
+
+    it('computes under total when over the line', () => {
+      const leg = createLeg({ market_type: 'total', selection: 'Under 50.5' })
+      const delta = computeBetDelta(leg, 30, 24)
+      expect(delta!.type).toBe('behind')
+      expect(delta!.value).toBeCloseTo(-3.5)
+    })
+
+    it('computes over total needing more', () => {
+      const leg = createLeg({ market_type: 'total', selection: 'Over 48.5' })
+      const delta = computeBetDelta(leg, 20, 14)
+      expect(delta!.type).toBe('need')
+      expect(delta!.label).toBe('Need 14.5 more')
+    })
+
+    it('computes over total already covering', () => {
+      const leg = createLeg({ market_type: 'total', selection: 'Over 48.5' })
+      const delta = computeBetDelta(leg, 30, 24)
+      expect(delta!.type).toBe('covering')
+      expect(delta!.label).toBe('Over by 5.5')
+    })
+
+    it('computes spread covering for favorite', () => {
+      const leg = createLeg({ market_type: 'spread', selection: 'Chiefs -3.5', home_team: 'Chiefs', away_team: 'Ravens' })
+      const delta = computeBetDelta(leg, 21, 14)
+      expect(delta!.type).toBe('covering')
+      expect(delta!.label).toBe('Covering by 3.5')
+    })
+
+    it('computes spread behind for favorite', () => {
+      const leg = createLeg({ market_type: 'spread', selection: 'Chiefs -7.5', home_team: 'Chiefs', away_team: 'Ravens' })
+      const delta = computeBetDelta(leg, 21, 17)
+      expect(delta!.type).toBe('behind')
+      expect(delta!.label).toBe('Behind by 3.5')
+    })
+
+    it('computes spread covering for underdog', () => {
+      const leg = createLeg({ market_type: 'spread', selection: 'Ravens +7.5', home_team: 'Chiefs', away_team: 'Ravens' })
+      const delta = computeBetDelta(leg, 21, 17)
+      expect(delta!.type).toBe('covering')
+      expect(delta!.label).toBe('Covering by 3.5')
+    })
+
+    it('computes moneyline leading', () => {
+      const leg = createLeg({ market_type: 'moneyline', selection: 'Chiefs', home_team: 'Chiefs', away_team: 'Ravens' })
+      const delta = computeBetDelta(leg, 21, 14)
+      expect(delta!.type).toBe('leading')
+      expect(delta!.label).toBe('Up by 7')
+    })
+
+    it('computes moneyline trailing', () => {
+      const leg = createLeg({ market_type: 'moneyline', selection: 'Ravens', home_team: 'Chiefs', away_team: 'Ravens' })
+      const delta = computeBetDelta(leg, 21, 14)
+      expect(delta!.type).toBe('trailing')
+      expect(delta!.label).toBe('Down by 7')
+    })
+
+    it('computes moneyline tied', () => {
+      const leg = createLeg({ market_type: 'moneyline', selection: 'Chiefs', home_team: 'Chiefs', away_team: 'Ravens' })
+      const delta = computeBetDelta(leg, 14, 14)
+      expect(delta!.type).toBe('tied')
+      expect(delta!.label).toBe('Tied')
+    })
+
+    it('returns null for unknown market type', () => {
+      const leg = createLeg({ market_type: 'player_prop', selection: 'LeBron Over 25.5 pts' })
+      const delta = computeBetDelta(leg, 100, 90)
+      expect(delta).toBeNull()
+    })
+  })
+
+  describe('Game time display', () => {
+    it('shows Final for completed games', () => {
+      const result = getGameTimeDisplay(new Date().toISOString(), true, 'completed')
+      expect(result).toBe('Final')
+    })
+
+    it('shows elapsed time for in-progress games', () => {
+      const thirtyMinAgo = new Date(Date.now() - 30 * 60000).toISOString()
+      const result = getGameTimeDisplay(thirtyMinAgo, false, 'in_progress')
+      expect(result).toBe('30m in')
+    })
+
+    it('shows countdown for scheduled games', () => {
+      const inTwoHours = new Date(Date.now() + 2 * 3600000).toISOString()
+      const result = getGameTimeDisplay(inTwoHours, false, 'scheduled')
+      expect(result).toBe('Starts in 2h')
+    })
+
+    it('returns null for games with no clear status', () => {
+      const pastTime = new Date(Date.now() - 60000).toISOString()
+      const result = getGameTimeDisplay(pastTime, false, null)
+      expect(result).toBeNull()
     })
   })
 

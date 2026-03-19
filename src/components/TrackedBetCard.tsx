@@ -7,6 +7,7 @@ import { TrackedBet } from '@/types/betting'
 import { formatCurrency } from '@/lib/utils'
 import ParlayLegList from '@/components/ParlayLegList'
 import { cn } from '@/lib/utils'
+import { computeBetDelta, getGameTimeDisplay } from '@/lib/bet-delta'
 import { Monitor, Trash2, CheckCircle, ChevronDown, ChevronUp, Clock, Zap } from 'lucide-react'
 
 interface TrackedBetCardProps {
@@ -136,24 +137,54 @@ export default function TrackedBetCard({
         </div>
 
         {/* Straight bet: show score inline */}
-        {!isParlay && leg && (
-          <div className="flex items-center justify-between bg-zinc-800/50 rounded-lg p-3 mb-2">
-            <div>
-              <div className="text-sm text-white font-medium">{leg.selection}</div>
-              <div className="text-xs text-zinc-400">{leg.market_type} • {leg.league}</div>
-            </div>
-            {(scoreData || (leg.live_score_home !== null && leg.live_score_away !== null)) && (
-              <div className="text-right">
-                <div className="text-xl font-mono font-bold text-white tabular-nums">
-                  {scoreData ? `${scoreData.home} - ${scoreData.away}` : `${leg.live_score_home} - ${leg.live_score_away}`}
-                </div>
+        {!isParlay && leg && (() => {
+          const home = scoreData?.home ?? leg.live_score_home
+          const away = scoreData?.away ?? leg.live_score_away
+          const hasScore = home !== null && home !== undefined && away !== null && away !== undefined
+          const delta = hasScore ? computeBetDelta(leg, home, away) : null
+          const gameTime = getGameTimeDisplay(
+            leg.commence_time,
+            scoreData?.status === 'completed',
+            leg.game_status || scoreData?.status || null
+          )
+          return (
+            <div className="flex items-center justify-between bg-zinc-800/50 rounded-lg p-3 mb-2">
+              <div>
+                <div className="text-sm text-white font-medium">{leg.selection}</div>
                 <div className="text-xs text-zinc-400">
-                  {scoreData?.status || leg.game_status || 'Scheduled'}
+                  {leg.market_type} • {leg.league}
+                  {gameTime && <span className="ml-1.5 text-zinc-500">• {gameTime}</span>}
                 </div>
               </div>
-            )}
-          </div>
-        )}
+              <div className="flex flex-col items-end gap-1">
+                {hasScore && (
+                  <div className="text-xl font-mono font-bold text-white tabular-nums">
+                    {home} - {away}
+                  </div>
+                )}
+                {delta && (
+                  <span className={cn(
+                    'text-xs font-medium rounded-full px-2 py-0.5',
+                    delta.type === 'cushion' || delta.type === 'covering' || delta.type === 'leading'
+                      ? 'text-emerald-400 bg-emerald-900/30'
+                      : delta.type === 'behind' || delta.type === 'trailing'
+                      ? 'text-red-400 bg-red-900/30'
+                      : delta.type === 'need'
+                      ? 'text-amber-400 bg-amber-900/30'
+                      : 'text-zinc-400 bg-zinc-800'
+                  )}>
+                    {delta.label}
+                  </span>
+                )}
+                {!hasScore && (
+                  <div className="text-xs text-zinc-400">
+                    {gameTime || scoreData?.status || leg.game_status || 'Scheduled'}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Parlay: expandable leg list */}
         {isParlay && (
