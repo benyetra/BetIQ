@@ -193,3 +193,75 @@ export interface WhatIfScenario {
   hypotheticalPL: number
   difference: number
 }
+
+// ============================================================
+// Live Bet Tracker Types
+// ============================================================
+
+export type TrackingStatus = 'live' | 'settled' | 'cancelled'
+
+export type LegStatus = 'pending' | 'win' | 'loss' | 'push' | 'in_progress'
+
+export interface TrackedBetLeg {
+  id: string
+  sport: string
+  league: string
+  game_id: string
+  home_team: string
+  away_team: string
+  commence_time: string
+  market_type: MarketType
+  selection: string
+  odds: number
+  status: LegStatus
+  live_score_home: number | null
+  live_score_away: number | null
+  game_status: string | null // 'scheduled' | 'in_progress' | 'completed'
+}
+
+export interface TrackedBet {
+  id: string
+  user_id: string
+  bet_type: BetType
+  tracking_status: TrackingStatus
+  legs: TrackedBetLeg[]
+  total_odds: number
+  stake: number
+  potential_payout: number
+  sportsbook: string
+  presentation_theme: 'dark' | 'light'
+  live_snapshot: LiveSnapshot | null
+  created_at: string
+  settled_at: string | null
+}
+
+export interface LiveSnapshot {
+  scores: Record<string, { home: number; away: number; status: string; clock?: string }>
+  odds: Record<string, number>
+  updated_at: string
+}
+
+export interface OddsApiGame {
+  id: string
+  sport_key: string
+  sport_title: string
+  commence_time: string
+  home_team: string
+  away_team: string
+  scores?: { name: string; score: string }[]
+  completed?: boolean
+  last_update?: string
+}
+
+export interface OddsApiMarket {
+  key: string
+  outcomes: { name: string; price: number; point?: number }[]
+}
+
+export interface TrackedBetEvent {
+  id: string
+  bet_id: string
+  event_type: 'score_update' | 'leg_status_change' | 'odds_update' | 'settled'
+  payload: Record<string, unknown>
+  created_at: string
+}

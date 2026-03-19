@@ -16,7 +16,8 @@ import InsightsPanel from '@/components/InsightsPanel'
 import ChatCoach from '@/components/ChatCoach'
 import StrategyBuilder from '@/components/StrategyBuilder'
 import AlertsPanel from '@/components/AlertsPanel'
-import { BarChart3, Upload, Brain, MessageCircle, Target, TrendingUp, Trash2, Phone, Bell, CloudUpload, Loader2 } from 'lucide-react'
+import LiveTrackerTab from '@/components/LiveTrackerTab'
+import { BarChart3, Upload, Brain, MessageCircle, Target, TrendingUp, Trash2, Phone, Bell, CloudUpload, Loader2, Activity } from 'lucide-react'
 
 export default function Home() {
   const { user, isLoading: authLoading } = useAuth()
@@ -205,48 +206,80 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {!hasData ? (
-          <div className="py-12">
-            <div className="text-center mb-12">
-              <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-                Know Your Betting Edge
-              </h1>
-              <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-                Upload your sportsbook data and let AI uncover your winning patterns, expose your leaks, and coach you toward profitability.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12 max-w-3xl mx-auto">
-              {[
-                { icon: BarChart3, title: 'Deep Analytics', desc: 'Performance dashboards with 20+ interactive charts and filters' },
-                { icon: Brain, title: 'AI Insights', desc: 'Personalized coaching powered by analysis of your betting patterns' },
-                { icon: Target, title: 'Strategy Builder', desc: 'What-if simulations and AI-generated betting strategies' },
-              ].map(({ icon: Icon, title, desc }) => (
-                <div key={title} className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 text-center">
-                  <Icon className="h-8 w-8 text-emerald-400 mx-auto mb-3" />
-                  <h3 className="font-semibold text-white mb-1">{title}</h3>
-                  <p className="text-sm text-zinc-400">{desc}</p>
+          <Tabs defaultValue="welcome" className="space-y-6">
+            <TabsList className="w-full justify-start overflow-x-auto">
+              <TabsTrigger value="welcome">
+                <TrendingUp className="h-4 w-4 mr-1.5" />
+                Welcome
+              </TabsTrigger>
+              <TabsTrigger value="live-tracker">
+                <Activity className="h-4 w-4 mr-1.5" />
+                Live Tracker
+              </TabsTrigger>
+              <TabsTrigger value="upload">
+                <Upload className="h-4 w-4 mr-1.5" />
+                Upload
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="welcome">
+              <div className="py-12">
+                <div className="text-center mb-12">
+                  <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+                    Know Your Betting Edge
+                  </h1>
+                  <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+                    Upload your sportsbook data for AI analytics, or track your live bets in real time.
+                  </p>
                 </div>
-              ))}
-            </div>
-            <UploadPanel onDataLoaded={handleDataLoaded} />
-            <div className="mt-12 max-w-2xl mx-auto text-center">
-              <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Phone className="h-4 w-4 text-zinc-400" />
-                  <span className="text-sm text-zinc-400 font-medium">Responsible Gambling Resources</span>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12 max-w-4xl mx-auto">
+                  {[
+                    { icon: Activity, title: 'Live Tracker', desc: 'Track active bets with real-time scores and leg-by-leg progress' },
+                    { icon: BarChart3, title: 'Deep Analytics', desc: 'Performance dashboards with 20+ interactive charts and filters' },
+                    { icon: Brain, title: 'AI Insights', desc: 'Personalized coaching powered by analysis of your betting patterns' },
+                    { icon: Target, title: 'Strategy Builder', desc: 'What-if simulations and AI-generated betting strategies' },
+                  ].map(({ icon: Icon, title, desc }) => (
+                    <div key={title} className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 text-center">
+                      <Icon className="h-8 w-8 text-emerald-400 mx-auto mb-3" />
+                      <h3 className="font-semibold text-white mb-1">{title}</h3>
+                      <p className="text-sm text-zinc-400">{desc}</p>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-xs text-zinc-500">
-                  If you or someone you know has a gambling problem, call the National Council on Problem Gambling helpline: 1-800-522-4700.
-                  BetIQ is an educational analytics tool and does not guarantee profits.
-                </p>
+                <UploadPanel onDataLoaded={handleDataLoaded} />
+                <div className="mt-12 max-w-2xl mx-auto text-center">
+                  <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Phone className="h-4 w-4 text-zinc-400" />
+                      <span className="text-sm text-zinc-400 font-medium">Responsible Gambling Resources</span>
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                      If you or someone you know has a gambling problem, call the National Council on Problem Gambling helpline: 1-800-522-4700.
+                      BetIQ is an educational analytics tool and does not guarantee profits.
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </TabsContent>
+
+            <TabsContent value="live-tracker">
+              <LiveTrackerTab userId={user.id} />
+            </TabsContent>
+
+            <TabsContent value="upload">
+              <UploadPanel onDataLoaded={handleDataLoaded} />
+            </TabsContent>
+          </Tabs>
         ) : (
           <Tabs defaultValue="dashboard" className="space-y-6">
             <TabsList className="w-full justify-start overflow-x-auto">
               <TabsTrigger value="dashboard">
                 <BarChart3 className="h-4 w-4 mr-1.5" />
                 Dashboard
+              </TabsTrigger>
+              <TabsTrigger value="live-tracker">
+                <Activity className="h-4 w-4 mr-1.5" />
+                Live Tracker
               </TabsTrigger>
               <TabsTrigger value="insights">
                 <Brain className="h-4 w-4 mr-1.5" />
@@ -290,6 +323,10 @@ export default function Home() {
                 <DayPatternChart data={dayPatterns} />
               </div>
               <SportLeaderboard data={sportBreakdown} />
+            </TabsContent>
+
+            <TabsContent value="live-tracker">
+              <LiveTrackerTab userId={user.id} />
             </TabsContent>
 
             <TabsContent value="insights">
