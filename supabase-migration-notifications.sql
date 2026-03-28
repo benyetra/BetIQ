@@ -18,8 +18,15 @@ CREATE INDEX IF NOT EXISTS idx_user_devices_user_id ON user_devices(user_id);
 
 ALTER TABLE user_devices ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage own devices" ON user_devices
-  FOR ALL USING (auth.uid() = user_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'user_devices' AND policyname = 'Users can manage own devices'
+  ) THEN
+    CREATE POLICY "Users can manage own devices" ON user_devices
+      FOR ALL USING (auth.uid() = user_id);
+  END IF;
+END $$;
 
 -- Notification preferences table
 CREATE TABLE IF NOT EXISTS notification_preferences (
@@ -40,8 +47,15 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
 
 ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can manage own preferences" ON notification_preferences
-  FOR ALL USING (auth.uid() = user_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'notification_preferences' AND policyname = 'Users can manage own preferences'
+  ) THEN
+    CREATE POLICY "Users can manage own preferences" ON notification_preferences
+      FOR ALL USING (auth.uid() = user_id);
+  END IF;
+END $$;
 
 -- Add player_stats_snapshot column to tracked_bets if not exists
 DO $$
